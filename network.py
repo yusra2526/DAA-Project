@@ -10,13 +10,17 @@ RELATION_TYPES = {
     "acquaintance": {"weight": 1, "color": "green"},
 }
 
-def generate_graph_data(num_nodes=100):
+def generate_graph_data(num_nodes=100, num_families=10):
     nodes = [{"id": i} for i in range(num_nodes)]
     edges = []
 
-    # 1. Family edges from Watts-Strogatz model
-    ws = nx.watts_strogatz_graph(num_nodes, k=4, p=0.4)
-    for u, v in ws.edges():
+    # Step 1: FAMILY CLUSTERS (Tight clusters using SBM)
+    family_size = num_nodes // num_families
+    sizes = [family_size] * num_families
+    probs = [[0.9 if i == j else 0.01 for j in range(num_families)] for i in range(num_families)]  # dense inside, sparse between
+    sbm = nx.stochastic_block_model(sizes, probs)
+
+    for u, v in sbm.edges():
         edges.append({
             "source": u,
             "target": v,
@@ -25,34 +29,35 @@ def generate_graph_data(num_nodes=100):
             "color": RELATION_TYPES["family"]["color"]
         })
 
-    # 2. Acquaintance edges from Barabási–Albert (scale-free) model
-    sf = nx.barabasi_albert_graph(num_nodes, m=1)
+    # Step 2: FRIENDS (Scale-free network)
+    sf = nx.barabasi_albert_graph(num_nodes, m=2)
     for u, v in sf.edges():
         if not any((e['source'] == v and e['target'] == u) or (e['source'] == u and e['target'] == v) for e in edges):
             edges.append({
                 "source": u,
                 "target": v,
-                "type": "acquaintance",
-                "weight": RELATION_TYPES["acquaintance"]["weight"],
-                "color": RELATION_TYPES["acquaintance"]["color"]
+                "type": "friend",
+                "weight": RELATION_TYPES["friend"]["weight"],
+                "color": RELATION_TYPES["friend"]["color"]
             })
 
-    # 3. Friend edges - Random undirected edges
+    # Step 3: ACQUAINTANCES (Random undirected edges)
     possible_pairs = [(a, b) for a in range(num_nodes) for b in range(a + 1, num_nodes)]
     random.shuffle(possible_pairs)
-    friend_edges = 0
+    acquaintance_edges = 0
+    max_acquaintances = num_nodes  # limit to num_nodes random acquaintance edges
     for a, b in possible_pairs:
-        if friend_edges >= num_nodes:
+        if acquaintance_edges >= max_acquaintances:
             break
         if not any((e['source'] == b and e['target'] == a) or (e['source'] == a and e['target'] == b) for e in edges):
             edges.append({
                 "source": a,
                 "target": b,
-                "type": "friend",
-                "weight": RELATION_TYPES["friend"]["weight"],
-                "color": RELATION_TYPES["friend"]["color"]
+                "type": "acquaintance",
+                "weight": RELATION_TYPES["acquaintance"]["weight"],
+                "color": RELATION_TYPES["acquaintance"]["color"]
             })
-            friend_edges += 1
+            acquaintance_edges += 1
 
     return {"nodes": nodes, "edges": edges}
 
