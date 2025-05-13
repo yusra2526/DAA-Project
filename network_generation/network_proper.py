@@ -21,7 +21,7 @@ def generate_edge_params(edge_type, seed=None):
     dict
         {'TP': float, 'CI': float, 'CP': float}
     """
-    rng = random.Random(seed)
+    rng = np.random.default_rng(seed)
     # Transmission probability
     tp = round(rng.uniform(0.3, 0.4), 2)
 
