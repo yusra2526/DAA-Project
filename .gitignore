@@ -1,2 +1,9 @@
 venv/
 graph_data.json
+.idea/DAA-Project.iml
+.idea/inspectionProfiles/profiles_settings.xml
+.idea/inspectionProfiles/Project_Default.xml
+.idea/misc.xml
+.idea/modules.xml
+.idea/vcs.xml
+visualization/__pycache__/PannableImageViewer.cpython-311.pyc
