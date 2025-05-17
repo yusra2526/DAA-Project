@@ -12,3 +12,4 @@ vis.py
 network_generation_revised/edges.csv
 network_generation_revised/clean_edges.csv
 network_generation_revised/clean_nodes.csv
+network_generation_revised/network.bin

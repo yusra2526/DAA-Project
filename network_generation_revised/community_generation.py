@@ -6,7 +6,10 @@ def generate_work_communities(
         min_size: int,
         max_size: int
 ) -> tuple[list[list[int]], dict[int, int]]:
+
     """
+    DISCLAIMER: can sometimes end with some members that aren't assigned to any community!! due to random group sizes.
+
     Divides node IDs within a given range into distinct communities.
     Each node ID belongs to at most one community.
     Communities adhere to min_size and max_size.
@@ -77,7 +80,9 @@ def generate_work_communities(
 
 if __name__=="__main__":
 
-    comms,comm_indexes = generate_work_communities((0,7874), 15, 30)
+    comms,comm_indexes = generate_work_communities((59_712, 72_836), 10, 20)
 
-    for node_id, comm_id in comm_indexes.items():
-        print(node_id, comm_id)
+    for node_id in sorted(comm_indexes.keys()):
+        print(node_id)
+
+    print(len(comm_indexes))

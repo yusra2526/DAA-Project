@@ -1,8 +1,6 @@
 import pickle
 
-from family_generation import generate_families
-from friend_group_generation import generate_friend_groups
-from community_generation import generate_work_communities
+
 """
 
 All sizes are fixed for a 100k size population.
@@ -10,42 +8,29 @@ Variability can be introduced later if desired.
 
 """
 
-"returns the inclusive node range allocated to the age group"
-age_group_to_node_range:dict[str, tuple[int, int]] = {
-    "baby" : (0,10_000-1),
-    "kid":(10_000, 30_000 - 1),
-    "young_adult":(30_000, 50_000 - 1),
-    "adult":(50_000, 85_000 - 1),
-    "old":(85_000, 100_000 - 1)
-}
 
-def get_age_group(node_id)->str|None:
-    for age_group in ["baby", "kid", "young_adult", "adult", "old"]:
-        node_range = age_group_to_node_range[age_group]
-        if node_id >= node_range[0] and node_id <= node_range[1]:
-            return age_group
-    return None
 
-profession_group_to_node_range: dict[str, tuple[int, int]] = {
-    "A": (50_000, 59_711),
-    "B": (59_712, 72_836),
-    "C": (72_837, 84_999)
-}
-
-# 2. Function to get profession group from a node_id
-def get_profession_group(node_id: int) -> str | None:
-
-    """
-    Returns the profession group string for a given node_id.
-    Returns None if the node_id does not fall into any defined profession group range.
-    """
-    for profession_group, node_range in profession_group_to_node_range.items():
-        if node_range[0] <= node_id <= node_range[1]:
-            return profession_group
-    return None
 
 
 class Network:
+
+    "returns the inclusive node range allocated to the age group"
+    age_group_to_node_range: dict[str, tuple[int, int]] = {
+        "baby": (0, 10_000 - 1),
+        "kid": (10_000, 30_000 - 1),
+        "young_adult": (30_000, 50_000 - 1),
+        "adult": (50_000, 85_000 - 1),
+        "old": (85_000, 100_000 - 1)
+    }
+
+    profession_group_to_node_range: dict[str, tuple[int, int]] = {
+        "A": (50_000, 59_711),
+        "B": (59_712, 72_836),
+        "C": (72_837, 84_999)
+    }
+
+
+
     def __init__(self, nodes, families, friend_groups, communities):
         self.nodes:list[dict] = nodes
         self.families:list[list] = families
@@ -54,7 +39,7 @@ class Network:
 
     def get_age_group(self, node_id) -> str | None:
         for age_group in ["baby", "kid", "young_adult", "adult", "old"]:
-            node_range = age_group_to_node_range[age_group]
+            node_range = self.age_group_to_node_range[age_group]
             if node_range[0] <= node_id <= node_range[1]:
                 return age_group
         return None
@@ -65,20 +50,26 @@ class Network:
         Returns the profession group string for a given node_id.
         Returns None if the node_id does not fall into any defined profession group range.
         """
-        for profession_group, node_range in profession_group_to_node_range.items():
+        for profession_group, node_range in self.profession_group_to_node_range.items():
             if node_range[0] <= node_id <= node_range[1]:
                 return profession_group
         return None
 
 
+
 def generate_network():
+    from family_generation import generate_families
+    from friend_group_generation import generate_friend_groups
+    from community_generation import generate_work_communities
 
     # node IDs are in [0,100k)
 
-    nodes = [{}]*100_000
+    nodes = []
+    for _ in range(100_000):
+        nodes.append({})
 
     print("Generating families")
-    families, family_index = generate_families(age_group_to_node_range)
+    families, family_index = generate_families(Network.age_group_to_node_range)
     print("Generated families")
 
     for node,fam_index in family_index.items():
@@ -86,14 +77,14 @@ def generate_network():
 
 
     print("Generating friend groups of kids")
-    kids_friend_groups, kid_friend_group_index = generate_friend_groups(age_group_to_node_range["kid"])
+    kids_friend_groups, kid_friend_group_index = generate_friend_groups(Network.age_group_to_node_range["kid"])
     print("Generated friend groups of kids")
 
     for node_id, kfg_indexes in kid_friend_group_index.items():
         nodes[node_id]["friend_group_ids"] = kfg_indexes
 
     print("Generating friend groups of young_adults")
-    young_adults_friend_groups, young_adults_friend_group_index = generate_friend_groups(age_group_to_node_range["young_adult"])
+    young_adults_friend_groups, young_adults_friend_group_index = generate_friend_groups(Network.age_group_to_node_range["young_adult"])
     print("Generating friend groups of young_adults")
 
     # merging friend groups lists into one
@@ -105,20 +96,21 @@ def generate_network():
 
 
     print("Generating profession A communities")
-    profA_communitites, profA_comm_index = generate_work_communities(profession_group_to_node_range["A"], 15, 30)
+    profA_communitites, profA_comm_index = generate_work_communities(Network.profession_group_to_node_range["A"], 15, 30)
     print("Generated profession A communities")
 
     for node_id, comm_index in profA_comm_index.items():
         nodes[node_id]["comm_id"] = comm_index
 
     print("Generating profession B communities")
-    profB_communitites, profB_comm_index = generate_work_communities(profession_group_to_node_range["B"], 10, 20)
+    profB_communitites, profB_comm_index = generate_work_communities(Network.profession_group_to_node_range["B"], 10, 20)
     print("Generated profession B communities")
 
     communities = profA_communitites + profB_communitites
 
     for node_id, comm_index in profB_comm_index.items():
         nodes[node_id]["comm_id"] = comm_index + len(profA_communitites)
+
 
     return Network(nodes, families, friend_groups, communities)
 
