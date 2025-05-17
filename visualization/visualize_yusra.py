@@ -105,4 +105,4 @@ RELATION_WIDTHS = {
 }
 
 if __name__ == "__main__":
-    visualize_graph_interactively("graph_data.json")
+    visualize_graph_interactively("../network_generation/graph_data.json")
