@@ -9,3 +9,6 @@ graph_data.json
 visualization/__pycache__/PannableImageViewer.cpython-311.pyc
 /network_generation/rs_graph.gpickle
 vis.py
+network_generation_revised/edges.csv
+network_generation_revised/clean_edges.csv
+network_generation_revised/clean_nodes.csv
