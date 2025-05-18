@@ -14,6 +14,13 @@ Variability can be introduced later if desired.
 
 class Network:
 
+
+    @staticmethod
+    def load_from_bin(file_path):
+        import pickle
+        with open(file_path,"rb") as file:
+            return pickle.load(file)
+
     "returns the inclusive node range allocated to the age group"
     age_group_to_node_range: dict[str, tuple[int, int]] = {
         "baby": (0, 10_000 - 1),
