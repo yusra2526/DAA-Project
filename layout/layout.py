@@ -1,8 +1,9 @@
+import random
+
 import networkx
-import networkx as nx
 import pickle
 from PIL import Image, ImageDraw
-from cluster_compression import compress_network
+
 from network_generation_revised.network import Network
 
 
@@ -17,7 +18,7 @@ def convert_to_absolute_positions(positions, image_width, image_height, margin=1
         margin (int): Margin in pixels around the layout (default: 50px).
 
     Returns:
-        dict: Absolute positions in pixels {node: (x_px, y_px)}.
+        dict: Absolute positions in pixels {node: (x_px, y_px)}, if each node was a 1by1 pixel
     """
     xs, ys = zip(*positions.values())
     min_x, max_x = min(xs), max(xs)
@@ -34,7 +35,7 @@ def convert_to_absolute_positions(positions, image_width, image_height, margin=1
         x_px = int(margin + norm_x * (image_width - 2 * margin))
         y_px = int(margin + norm_y * (image_height - 2 * margin))
 
-        # Flip y-axis for image coordinates (optional)
+        # Flip y-axis for image coordinates
         y_px = image_height - y_px
 
         abs_positions[node] = (x_px, y_px)
@@ -42,49 +43,111 @@ def convert_to_absolute_positions(positions, image_width, image_height, margin=1
     return abs_positions
 
 
-def draw_graph_image(positions, image_size=(800, 600), node_color=(0, 120, 255),
-                     background_color=(255, 255, 255), node_radius=5, shape="circle") -> Image.Image:
-    """
-    Draws a graph using absolute pixel positions and returns a PIL image.
+def draw_initial_graph(node_positions, family_positions, house_color=(235, 235, 52), node_color=(0,255,0)) -> Image.Image:
 
-    Parameters:
-        positions (dict): Absolute positions {node: (x_px, y_px)}.
-        image_size (tuple): Size of the output image (width, height).
-        node_color (tuple): RGB color of the nodes (e.g., (0, 120, 255)).
-        background_color (tuple): RGB background color of the image.
-        node_radius (int): Radius of the nodes in pixels.
-
-    Returns:
-        PIL.Image: The resulting image with the graph drawn.
     """
-    img = Image.new("RGB", image_size, background_color)
+    Draws a graph using absolute pixel positions, returned by convert_to_absolute_positions and returns a PIL image.
+    """
+
+    img = Image.new("RGB", (10000,10000), (255,255,255))
+
     draw = ImageDraw.Draw(img)
 
-    for x, y in positions.values():
-        left_up = (x - node_radius, y - node_radius)
-        right_down = (x + node_radius, y + node_radius)
-        if shape=="circle":
-            draw.ellipse([left_up, right_down], fill=node_color)
-        else:
-            draw.rectangle((left_up, right_down), fill=node_color)
+    for node_center in family_positions.values():
+        draw_house(draw, node_center,color=house_color)
+
+    for node_position in node_positions.values():
+        draw.rectangle(node_position, fill=node_color)
+
     return img
 
-
-
-if __name__=="__main__":
-
+def calculate_family_positions():
+    from cluster_compression import compress_network
     # 10k nodes and about 240k edges
     G = compress_network(Network.load_from_bin("../network_generation_revised/network.bin"))
 
     # k = 1/5 means the algo tries to realize a distance of 1/5*10k = 2k pixels between nodes
     # obviously, this may not actually be possible, so its a best-effort thing, and more iteration means
     # its more accurate to our description, 25 iterations take about 2 minutes.
-    pos = networkx.spring_layout(G,iterations=75, k=1/5)
-
+    pos = networkx.spring_layout(G, iterations=75, k=1 / 5)
 
     abs_pos = convert_to_absolute_positions(pos, image_width=10000, image_height=10000)
 
-    # we end up with a graph where each node is actually a family of 10.
+    # we end up with a graph where each node is actually a family of 10 nodes
 
+    # the current positions works well for NODE_RADIUS = 10 pixels which ends up assigning a 21x21 square to each family
+
+    # the output is dictionary of fam_id -> center of family_space (x,y)
     with open("family_positions.bin", "wb") as file:
-         pickle.dump(abs_pos, file)
+        pickle.dump(abs_pos, file)
+
+# resolve family into
+def calculate_node_positions_for_family(center, family)->list[tuple[int, tuple[tuple[int,int],tuple[int,int]]]]:
+
+    """
+    given a family and center of family, assigns absolute positions to its members for a 10k by 10k image
+    returns (node_id, position) tuples, where each position is a tuple of (top_left, bottom_right).
+
+    These are pretty hardcoded values according to a 21 by 21 house centered at center
+    """
+    (x,y) = center
+    positions = []
+    available_positions = [
+        ((x-1, y-9),(x+1, y-6)),
+
+        ((x - 3, y - 4), (x - 1, y - 1)),
+        ((x + 1, y - 4), (x + 3, y - 1)),
+
+        ((x - 5, y + 1), (x - 3, y + 4)),
+        ((x - 1, y + 1), (x + 1, y + 4)),
+        ((x + 3, y + 1), (x + 5, y + 4)),
+
+        ((x - 7, y + 6), (x - 5, y + 9)),
+        ((x - 3, y + 6), (x - 1, y + 9)),
+        ((x + 1, y + 6), (x + 3, y + 9)),
+        ((x + 5, y + 6), (x + 7, y + 9)),
+    ]
+
+    random.shuffle(available_positions)
+
+    for i in range(10):
+        positions.append((family[i], available_positions[i]))
+
+    return positions
+
+def calculate_node_positions(G:Network, family_positions:dict[int, tuple[int,int]]):
+
+    families = G.families
+    node_positions = {}
+    for (fam_id, center) in family_positions.items():
+        family = families[fam_id]
+        node_position_pairs = calculate_node_positions_for_family(center, family)
+        node_positions.update(node_position_pairs)
+
+    with open("node_positions.bin","wb") as file:
+        pickle.dump(node_positions, file)
+
+def draw_house(drawer:ImageDraw.ImageDraw, center:tuple[int,int], color):
+
+        """# draws a house, centered at center, in a 21by21 square around the given center, this is HARDCODED for our setup"""
+        (x,y) =center
+
+        # house roof
+        drawer.line(((x-6,y-10),(x+6,y-10)),fill=color)
+        drawer.line(((x - 7, y - 9), (x + 7, y - 9)), fill=color)
+        drawer.line(((x - 8, y - 8), (x + 8, y - 8)), fill=color)
+        drawer.line(((x - 9, y - 7), (x + 9, y - 7)), fill=color)
+        drawer.line(((x - 10, y - 6), (x + 10, y - 6)), fill=color)
+        drawer.line(((x - 10, y - 5), (x + 10, y - 5)), fill=color)
+
+        # house base
+        drawer.rectangle(((x - 8, y - 4), (x + 8, y + 10)), fill=color)
+
+if __name__=="__main__":
+
+    with open("family_positions.bin","rb") as family_pos_file, open("node_positions.bin","rb") as node_pos_file:
+        family_pos = pickle.load(family_pos_file)
+        node_pos = pickle.load(node_pos_file)
+
+    draw_initial_graph(family_positions=family_pos, node_positions=node_pos).save("initial_image")
+

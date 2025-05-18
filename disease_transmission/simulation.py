@@ -1,14 +1,16 @@
 import pickle
 import random
+import time
 
 from network_generation_revised.network import Network
+from multiprocessing.connection import Client
 
 # 3.4%
 DEATH_PROBABILITY = 0.034
 
 # takes about 18.5 days to die, if you're going to, in hours
 AVG_DEATH_TIME = 18.5*24
-# standard deviation of 6 days
+# standard deviation of 6 dayszzzziiiii
 SD_DEATH_TIME = 6*24
 
 # takes about 22 days to recover
@@ -18,6 +20,7 @@ SD_RECOVERY_TIME = 5*24
 
 # 25% chance two people in contact for an hour, one being infected and one not, infects the other
 BASE_TRANSMISSION_PROBABILITY = 0.25
+
 
 
 # probability that a node chooses to just be alone in an hour, used for infected nodes
@@ -59,7 +62,7 @@ def sample_normal_distribution(mean: float, std_dev: float) -> int:
     # Or, if Python 3's round-half-to-even is acceptable:
     # return round(random_float)
 
-def evaluate_node_changes(G:Network,infected:list,h:int):
+def evaluate_node_changes(G:Network,infected:list,h:int,conn):
 
     """implements death, recovery or persistence of node
        just changes status for now
@@ -69,14 +72,17 @@ def evaluate_node_changes(G:Network,infected:list,h:int):
 
 
     to_remove_indices = []
-    for (i,node) in enumerate(infected):
+    for (i,node_id) in enumerate(infected):
 
-        if h >= G.nodes[node]["infection_time"] + G.nodes[node]["decision_time"]:
+        if h >= G.nodes[node_id]["infection_time"] + G.nodes[node_id]["decision_time"]:
 
-            if G.nodes[node]["decision"] == "death":
-                G.nodes[node]["status"] = "D"
+            if G.nodes[node_id]["decision"] == "death":
+                G.nodes[node_id]["status"] = "D"
+                conn.send((node_id,"D"))
             else:
-                G.nodes[node]["status"] = "R"
+                G.nodes[node_id]["status"] = "R"
+                conn.send((node_id, "R"))
+
 
             to_remove_indices.append(i)
 
@@ -95,7 +101,7 @@ def event_occurs(prob):
     return random.random() < prob
 
 
-def infect_node(G: Network, node_id, absolute_hour):
+def infect_node(G: Network, node_id, absolute_hour,conn):
     """
     marks the node as infected and writes all changes in the Network data structure accordingly.
     hour_time is the absolute hour the infection occurred
@@ -103,6 +109,7 @@ def infect_node(G: Network, node_id, absolute_hour):
     - status -> I
     - assign a infection_decision, whether it's going to die or recover
     - assign a corresponding decision_time, how many hours to live/die depending on decision
+    - changes color
     """
 
     G.nodes[node_id]["status"] = "I"
@@ -115,14 +122,16 @@ def infect_node(G: Network, node_id, absolute_hour):
     else:
         G.nodes[node_id]["decision_time"] = sample_normal_distribution(AVG_RECOVERY_TIME, SD_RECOVERY_TIME)
 
-def spread_infection_global(G:Network, infected:list[int], time_of_day:int, absolute_hour):
+    conn.send((node_id,"I"))
+
+def spread_infection_global(G:Network, infected:list[int], time_of_day:int, absolute_hour,conn):
 
     n = len(infected)
     # infected will have new elements appended to it, as we spread infection, to avoid iterating over them as well
     # we limit iterations to original length
     for i in range(n):
         node_id = infected[i]
-        spread_infection_per_node(node_id, G, infected, time_of_day, absolute_hour=absolute_hour)
+        spread_infection_per_node(node_id, G, infected, time_of_day, absolute_hour=absolute_hour,conn=conn)
 
 
 def get_contact(node_id, G:Network, type, same_age:bool=False, max_attempts = 10):
@@ -135,6 +144,7 @@ def get_contact(node_id, G:Network, type, same_age:bool=False, max_attempts = 10
     :param same_age: if family contact, same-age or not.
     :return: (contact,total_candidates), if valid contact found in the max_attempts, None otherwise
     """
+
 
     node = G.nodes[node_id]
     if type=="family":
@@ -186,7 +196,7 @@ def infection_probability(total_candidates):
     return BASE_TRANSMISSION_PROBABILITY + BASE_TRANSMISSION_PROBABILITY*(1/total_candidates)
 
 
-def determine_contact_type(node_id, time_of_day):
+def determine_contact_type(G:Network,node_id, time_of_day):
     """determines the contact_type dependeing on the classification of the node and the time of day
         returns (contact_Type, same_age) if its a family contact, (contact_type,) otherwise
     """
@@ -243,26 +253,26 @@ def determine_contact_type(node_id, time_of_day):
 
 
 
-def spread_infection_per_node(node_id, G:Network, infected:list[int], time_of_day:int, absolute_hour):
+def spread_infection_per_node(node_id, G:Network, infected:list[int], time_of_day:int, absolute_hour,conn):
 
     if event_occurs(isolation_probabilty()):
         G.nodes[node_id]["contact_status"] = "alone"
         return
 
-    result = get_contact(node_id, G, *determine_contact_type(node_id, time_of_day))
+    result = get_contact(node_id, G, *determine_contact_type(G,node_id, time_of_day))
     if not result:
         return
     else:
         victim_id, total_candidates = result
         establish_contact(G, node_id, victim_id)
         if event_occurs(infection_probability(total_candidates)):
-            infect_node(G, victim_id, absolute_hour)
+            infect_node(G, victim_id, absolute_hour,conn)
             infected.append(victim_id)
 
 
 
 
-def run_simulation(G: Network):
+def run_simulation(G: Network,conn):
 
     # states for now are S(susceptible), I(infected), R(recovered), D(died)
 
@@ -273,28 +283,29 @@ def run_simulation(G: Network):
     # first infected node, should be an adult
     first_infected = random.randint(*(Network.age_group_to_node_range["adult"]))
 
-    infect_node(G, first_infected, 0)
+    infect_node(G, first_infected, 0,conn=conn)
 
     h = 0
 
     infected = [first_infected]
 
     while True:
-
-
         # time starts from 8 AM
         time_of_day = (h + 8) % 24
 
-        evaluate_node_changes(G, infected, h)
+        evaluate_node_changes(G, infected, h,conn=conn)
         print(h, time_of_day, len(infected))
-        spread_infection_global(G, infected, time_of_day, h)
+        spread_infection_global(G, infected, time_of_day, h,conn=conn)
 
         h += 1
 
 
 
 if __name__ == "__main__":
+
+    conn = Client(address=('localhost', 6000), authkey=b'secret')
+
     with open("../network_generation_revised/network.bin", "rb") as file:
         G = pickle.load(file)
 
-    run_simulation(G)
+    run_simulation(G,conn)
