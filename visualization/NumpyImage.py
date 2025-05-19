@@ -23,7 +23,9 @@ class NumpyImage:
         # Clip bounds to array dimensions
         x0, x1 = np.clip([x0, x1], 0, self.array.shape[1])
         y0, y1 = np.clip([y0, y1], 0, self.array.shape[0])
-        self.array[y0:y1, x0:x1] = fill
+
+        # added 1 to make ranges inclusive
+        self.array[y0:y1+1, x0:x1+1] = fill
 
 
 if __name__=="__main__":

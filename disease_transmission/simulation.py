@@ -1,6 +1,5 @@
 import pickle
 import random
-import time
 
 from network_generation_revised.network import Network
 from multiprocessing.connection import Client
@@ -10,22 +9,61 @@ DEATH_PROBABILITY = 0.034
 
 # takes about 18.5 days to die, if you're going to, in hours
 AVG_DEATH_TIME = 18.5*24
-# standard deviation of 6 dayszzzziiiii
+# standard deviation of 6 days
 SD_DEATH_TIME = 6*24
 
-# takes about 22 days to recover
-AVG_RECOVERY_TIME = 22*24
-# standard dev of 5 days
-SD_RECOVERY_TIME = 5*24
+# takes about 10 days to recover,includes  incubation time (according to doctor talha bin kashif), more importantly, 4 days to stop transmitting
+AVG_RECOVERY_TIME = 10*24
+# standard dev of 1 day
+SD_RECOVERY_TIME = 1*24
 
-# 25% chance two people in contact for an hour, one being infected and one not, infects the other
-BASE_TRANSMISSION_PROBABILITY = 0.25
+# 25% chance two people in contact for an hour, one being infected, infects the other
+BASE_TRANSMISSION_PROBABILITY = 0.5
 
 
 
 # probability that a node chooses to just be alone in an hour, used for infected nodes
-def isolation_probabilty():
-    return random.uniform(0.05, 0.11)
+
+def approximate_linear(x, p1, p2):
+
+    """returns the y value corresponding to x, linear interpolation between p1 and p2"""
+
+    (x0,y0) = p1
+    (x1, y1) = p2
+
+    assert x0 <= x <= x1
+
+    return ((y1-y0)/(x1-x0))*(x-x0) + y1
+
+
+
+def isolation_probabilty(G,node_id, absolute_hour):
+
+    # 5 to 24%
+    base_prob = random.uniform(0.05, 0.24)
+    node = G.nodes[node_id]
+    if node["status"] != "I":
+        return base_prob
+
+    # TODO: need to subtract incubation time, since during it, isolation prob won't be affected
+    elif node["decision"]=="death":
+        # people set to die will have their probability increase linearly to a maximum of 90% until they die
+        return approximate_linear(absolute_hour, (node["infection_time"], base_prob), (node["decision_time"]+node["infection_time"], 0.9))
+    else: # recovery
+        # increases to midway of recovery, decreases back to normal till recover
+
+        infect_time = node["infection_time"]
+        recover_time = node["decision_time"] + infect_time
+
+        mid_point = recover_time//2
+
+        # maximum is 65%
+        if absolute_hour <= mid_point:
+            return approximate_linear(absolute_hour, (infect_time, base_prob),(mid_point, 0.65))
+        else:
+            return approximate_linear(absolute_hour, (mid_point, 0.65), (recover_time, base_prob))
+
+
 
 def sample_normal_distribution(mean: float, std_dev: float) -> int:
     """
@@ -67,7 +105,7 @@ def evaluate_node_changes(G:Network,infected:list,h:int,conn):
     """implements death, recovery or persistence of node
        just changes status for now
        and removes from infected list
-       also resets hourly states
+       also resets contact status
     """
 
 
@@ -78,10 +116,10 @@ def evaluate_node_changes(G:Network,infected:list,h:int,conn):
 
             if G.nodes[node_id]["decision"] == "death":
                 G.nodes[node_id]["status"] = "D"
-                conn.send((node_id,"D"))
+                conn.send((node_id,"D",h))
             else:
                 G.nodes[node_id]["status"] = "R"
-                conn.send((node_id, "R"))
+                conn.send((node_id, "R",h))
 
 
             to_remove_indices.append(i)
@@ -91,7 +129,7 @@ def evaluate_node_changes(G:Network,infected:list,h:int,conn):
     for i in reversed(to_remove_indices):
         del infected[i]
 
-    # refresh hourly states
+    # refresh hourly states, {free, alone, }
     for node in G.nodes:
         node["contact_status"] = "free"
 
@@ -122,7 +160,7 @@ def infect_node(G: Network, node_id, absolute_hour,conn):
     else:
         G.nodes[node_id]["decision_time"] = sample_normal_distribution(AVG_RECOVERY_TIME, SD_RECOVERY_TIME)
 
-    conn.send((node_id,"I"))
+    conn.send((node_id,"I",absolute_hour))
 
 def spread_infection_global(G:Network, infected:list[int], time_of_day:int, absolute_hour,conn):
 
@@ -134,7 +172,7 @@ def spread_infection_global(G:Network, infected:list[int], time_of_day:int, abso
         spread_infection_per_node(node_id, G, infected, time_of_day, absolute_hour=absolute_hour,conn=conn)
 
 
-def get_contact(node_id, G:Network, type, same_age:bool=False, max_attempts = 10):
+def get_contact(node_id, G:Network, absolute_hour,type, same_age:bool=False, max_attempts = 10):
 
     """
 
@@ -178,7 +216,13 @@ def get_contact(node_id, G:Network, type, same_age:bool=False, max_attempts = 10
                 if candidate != node_id:
                     break
             if G.nodes[candidate]["status"]=="S" and G.nodes[candidate]["contact_status"]=="free":
-                return candidate, len(candidates)
+
+                # possibility that candidate decided to be alone:
+                if event_occurs(isolation_probabilty(G, candidate, absolute_hour=absolute_hour)):
+                    G.nodes[candidate]["contact_status"]="alone"
+                    continue
+                else:
+                    return candidate, len(candidates)
         else:
             candidate = random.randrange(*G.age_group_to_node_range["adult"])
             if G.nodes[candidate]["status"]=="S" and G.nodes[candidate]["contact_status"]=="free":
@@ -255,11 +299,11 @@ def determine_contact_type(G:Network,node_id, time_of_day):
 
 def spread_infection_per_node(node_id, G:Network, infected:list[int], time_of_day:int, absolute_hour,conn):
 
-    if event_occurs(isolation_probabilty()):
+    if event_occurs(isolation_probabilty(G, node_id, absolute_hour)):
         G.nodes[node_id]["contact_status"] = "alone"
         return
 
-    result = get_contact(node_id, G, *determine_contact_type(G,node_id, time_of_day))
+    result = get_contact(node_id, G, absolute_hour, *determine_contact_type(G,node_id, time_of_day))
     if not result:
         return
     else:

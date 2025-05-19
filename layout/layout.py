@@ -43,13 +43,13 @@ def convert_to_absolute_positions(positions, image_width, image_height, margin=1
     return abs_positions
 
 
-def draw_initial_graph(node_positions, family_positions, house_color=(235, 235, 52), node_color=(0,255,0)) -> Image.Image:
+def draw_initial_graph(node_positions, family_positions, house_color=(235, 235, 52), node_color=(0,255,0), image_size=(5000,5000)) -> Image.Image:
 
     """
     Draws a graph using absolute pixel positions, returned by convert_to_absolute_positions and returns a PIL image.
     """
 
-    img = Image.new("RGB", (10000,10000), (255,255,255))
+    img = Image.new("RGB", image_size, (255,255,255))
 
     draw = ImageDraw.Draw(img)
 
@@ -61,7 +61,7 @@ def draw_initial_graph(node_positions, family_positions, house_color=(235, 235, 
 
     return img
 
-def calculate_family_positions():
+def calculate_family_positions(image_width, image_height):
     from cluster_compression import compress_network
     # 10k nodes and about 240k edges
     G = compress_network(Network.load_from_bin("../network_generation_revised/network.bin"))
@@ -69,9 +69,9 @@ def calculate_family_positions():
     # k = 1/5 means the algo tries to realize a distance of 1/5*10k = 2k pixels between nodes
     # obviously, this may not actually be possible, so its a best-effort thing, and more iteration means
     # its more accurate to our description, 25 iterations take about 2 minutes.
-    pos = networkx.spring_layout(G, iterations=75, k=1 / 5)
+    pos = networkx.spring_layout(G, iterations=50,k=1/50)
 
-    abs_pos = convert_to_absolute_positions(pos, image_width=10000, image_height=10000)
+    abs_pos = convert_to_absolute_positions(pos, image_width=image_width, image_height=image_height)
 
     # we end up with a graph where each node is actually a family of 10 nodes
 
@@ -85,7 +85,7 @@ def calculate_family_positions():
 def calculate_node_positions_for_family(center, family)->list[tuple[int, tuple[tuple[int,int],tuple[int,int]]]]:
 
     """
-    given a family and center of family, assigns absolute positions to its members for a 10k by 10k image
+    given a family and center of family, assigns absolute positions to its members
     returns (node_id, position) tuples, where each position is a tuple of (top_left, bottom_right).
 
     These are pretty hardcoded values according to a 21 by 21 house centered at center
@@ -145,9 +145,17 @@ def draw_house(drawer:ImageDraw.ImageDraw, center:tuple[int,int], color):
 
 if __name__=="__main__":
 
+    # FAMILY POSITIONS
+    calculate_family_positions(image_width=5000, image_height=5000)
+    # NODE POSITIONS
+    with open("family_positions.bin", "rb") as family_pos_file:
+        family_positions = pickle.load(family_pos_file)
+    calculate_node_positions(Network.load_from_bin("../network_generation_revised/network.bin"),family_positions)
+
+
     with open("family_positions.bin","rb") as family_pos_file, open("node_positions.bin","rb") as node_pos_file:
         family_pos = pickle.load(family_pos_file)
         node_pos = pickle.load(node_pos_file)
 
-    draw_initial_graph(family_positions=family_pos, node_positions=node_pos).save("initial_image")
+    draw_initial_graph(family_positions=family_pos, node_positions=node_pos).show()
 
