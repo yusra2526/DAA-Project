@@ -9,17 +9,22 @@ DEATH_PROBABILITY = 0.034
 
 # takes about 18.5 days to die, if you're going to, in hours
 AVG_DEATH_TIME = 18.5*24
-# standard deviation of 6 days
-SD_DEATH_TIME = 6*24
+# standard deviation of 2 days
+SD_DEATH_TIME = 2*24
 
-# takes about 10 days to recover,includes  incubation time (according to doctor talha bin kashif), more importantly, 4 days to stop transmitting
+# takes about 10 days to recover,includes  incubation time (according to doctor talha bin kashif), more importantly, 10 days to stop transmitting
 AVG_RECOVERY_TIME = 10*24
-# standard dev of 1 day
-SD_RECOVERY_TIME = 1*24
+# standard dev of 2 days
+SD_RECOVERY_TIME = 2*24
 
 # 25% chance two people in contact for an hour, one being infected, infects the other
 BASE_TRANSMISSION_PROBABILITY = 0.5
 
+# 5 to 24% probability that a normal node decides to be "alone" in a given hour.
+BASE_ISOLATION_PROBABILITY_RANGE = (0.05, 0.24)
+
+# the maximum isolation probability that an infected node can reach at the peak of its infection.
+MAX_ISOLATION_PROBABILITY = 0.85
 
 
 # probability that a node chooses to just be alone in an hour, used for infected nodes
@@ -40,7 +45,7 @@ def approximate_linear(x, p1, p2):
 def isolation_probabilty(G,node_id, absolute_hour):
 
     # 5 to 24%
-    base_prob = random.uniform(0.05, 0.24)
+    base_prob = random.uniform(*BASE_ISOLATION_PROBABILITY_RANGE)
     node = G.nodes[node_id]
     if node["status"] != "I":
         return base_prob
@@ -59,9 +64,9 @@ def isolation_probabilty(G,node_id, absolute_hour):
 
         # maximum is 65%
         if absolute_hour <= mid_point:
-            return approximate_linear(absolute_hour, (infect_time, base_prob),(mid_point, 0.65))
+            return approximate_linear(absolute_hour, (infect_time, base_prob),(mid_point, MAX_ISOLATION_PROBABILITY))
         else:
-            return approximate_linear(absolute_hour, (mid_point, 0.65), (recover_time, base_prob))
+            return approximate_linear(absolute_hour, (mid_point, MAX_ISOLATION_PROBABILITY), (recover_time, base_prob))
 
 
 
@@ -338,6 +343,7 @@ def run_simulation(G: Network,conn):
         time_of_day = (h + 8) % 24
 
         evaluate_node_changes(G, infected, h,conn=conn)
+
         print(h, time_of_day, len(infected))
         spread_infection_global(G, infected, time_of_day, h,conn=conn)
 

@@ -1,4 +1,6 @@
-from qtpy.QtWidgets import QWidget, QVBoxLayout, QLabel
+import subprocess
+
+from qtpy.QtWidgets import QWidget, QVBoxLayout, QLabel,QPushButton
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
@@ -7,6 +9,14 @@ class StatusWidget(QWidget):
         super().__init__()
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)
+
+        self.launch_button = QPushButton("Run")
+        self.layout.addWidget(self.launch_button)
+
+        # Connect to lambda: run process and disable button
+        self.launch_button.clicked.connect(
+            lambda _: (subprocess.Popen(["python", "simulation.py"]), self.launch_button.setDisabled(True))
+        )
 
         # Add title
         self.title = QLabel("<b>Node Status Summary</b>")
@@ -23,6 +33,8 @@ class StatusWidget(QWidget):
 
         from qtpy.QtWidgets import QGridLayout
 
+
+
         text_grid = QGridLayout()
 
         # Add labels row by row
@@ -37,6 +49,7 @@ class StatusWidget(QWidget):
 
         text_grid.addWidget(self.k_label, 3, 0)
         text_grid.addWidget(QWidget(), 3, 1)  # Empty spacer
+
 
         self.layout.addLayout(text_grid)
 
