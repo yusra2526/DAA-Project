@@ -86,8 +86,8 @@ class StatusWidget(QWidget):
         h = metrics["h"]
         self.hour_label.setText(f"⏱ Hour: <b>{h}</b>")
 
-        # Convert to clock time (starting from 8:00 AM)
-        base_hour = 8
+        # Convert to clock time (starting from 5:00 PM)
+        base_hour = 17
         clock_hour = (base_hour + h) % 24
         am_pm = "AM" if clock_hour < 12 or clock_hour == 24 else "PM"
         display_hour = clock_hour if 1 <= clock_hour <= 12 else (clock_hour - 12 if clock_hour > 12 else 12)

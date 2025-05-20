@@ -1,5 +1,6 @@
 import pickle
 import random
+import time
 
 from network_generation_revised.network import Network
 from multiprocessing.connection import Client
@@ -7,7 +8,7 @@ from multiprocessing.connection import Client
 # 3.4%
 DEATH_PROBABILITY = 0.034
 
-# takes about 18.5 days to die, if you're going to, in hours
+# takes about 18.5 days to die
 AVG_DEATH_TIME = 18.5*24
 # standard deviation of 2 days
 SD_DEATH_TIME = 2*24
@@ -26,6 +27,9 @@ BASE_ISOLATION_PROBABILITY_RANGE = (0.05, 0.24)
 # the maximum isolation probability that an infected node can reach at the peak of its infection.
 MAX_ISOLATION_PROBABILITY = 0.85
 
+# min hourly delay
+MIN_UPDATE_DELAY = 1
+
 
 # probability that a node chooses to just be alone in an hour, used for infected nodes
 
@@ -38,8 +42,16 @@ def approximate_linear(x, p1, p2):
 
     assert x0 <= x <= x1
 
-    return ((y1-y0)/(x1-x0))*(x-x0) + y1
+    return ((y1-y0)/(x1-x0))*(x-x0) + y0
 
+
+metrics = {
+    "S": 100_000,
+    "I": 0,
+    "R": 0,
+    "D": 0,
+    "h" : 0
+}
 
 
 def isolation_probabilty(G,node_id, absolute_hour):
@@ -62,7 +74,7 @@ def isolation_probabilty(G,node_id, absolute_hour):
 
         mid_point = recover_time//2
 
-        # maximum is 65%
+        # maximum is MAX_TRANSMISSION_PROBABILITY
         if absolute_hour <= mid_point:
             return approximate_linear(absolute_hour, (infect_time, base_prob),(mid_point, MAX_ISOLATION_PROBABILITY))
         else:
@@ -120,11 +132,18 @@ def evaluate_node_changes(G:Network,infected:list,h:int,conn):
         if h >= G.nodes[node_id]["infection_time"] + G.nodes[node_id]["decision_time"]:
 
             if G.nodes[node_id]["decision"] == "death":
+
+                metrics[G.nodes[node_id]["status"]] -= 1
                 G.nodes[node_id]["status"] = "D"
-                conn.send((node_id,"D",h))
+                metrics["D"] += 1
+
+                conn.send((node_id,"D"))
             else:
+                metrics[G.nodes[node_id]["status"]] -= 1
                 G.nodes[node_id]["status"] = "R"
-                conn.send((node_id, "R",h))
+                metrics["R"] += 1
+
+                conn.send((node_id, "R"))
 
 
             to_remove_indices.append(i)
@@ -165,7 +184,11 @@ def infect_node(G: Network, node_id, absolute_hour,conn):
     else:
         G.nodes[node_id]["decision_time"] = sample_normal_distribution(AVG_RECOVERY_TIME, SD_RECOVERY_TIME)
 
-    conn.send((node_id,"I",absolute_hour))
+    metrics["S"] -= 1
+    metrics["I"] += 1
+
+    conn.send((node_id,"I"))
+
 
 def spread_infection_global(G:Network, infected:list[int], time_of_day:int, absolute_hour,conn):
 
@@ -339,8 +362,11 @@ def run_simulation(G: Network,conn):
     infected = [first_infected]
 
     while True:
-        # time starts from 8 AM
-        time_of_day = (h + 8) % 24
+
+        start = time.time()
+
+        # time starts from 5 PM
+        time_of_day = (h + 17) % 24
 
         evaluate_node_changes(G, infected, h,conn=conn)
 
@@ -348,6 +374,16 @@ def run_simulation(G: Network,conn):
         spread_infection_global(G, infected, time_of_day, h,conn=conn)
 
         h += 1
+
+        end =  time.time()
+        print("actual time taken", end-start)
+
+
+        time.sleep(max(0.0, MIN_UPDATE_DELAY-(end-start)))
+
+
+        metrics["h"] = h
+        conn.send((-1, metrics))
 
 
 
